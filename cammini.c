@@ -40,10 +40,14 @@ typedef struct {
     atomic_bool finito;             // segnale che produttore ha finito di scrivere
 } shared_buffer_t;
 
+// volatile assicura che il compilatori non faccia assunzioni sul valore della variabile e che non ottimizzi il codice
+
+// diventerà true quando inizierà la lettura dalla pipe
 typedef struct {
     int pipe_fd;
     sigset_t *sigset;
     atomic_bool *terminate_program;
+    atomic_bool *pipe_phase;
 } signal_thread_args_t;
 
 typedef struct {
@@ -57,11 +61,6 @@ typedef struct {
 void termina(const char *messaggio);
 void cleanup(shared_buffer_t *sb, attore *attori, int num_attori, int pipe_fd);
 void *bfs_thread(void *args);
-// volatile assicura che il compilatori non faccia assunzioni sul valore della variabile e che non ottimizzi il codice
-// sig_atomic_c garantisce che la variabile sia atomicamente leggibile e scrivibile
-
-// diventerà true quando inizierà la lettura dalla pipe
-volatile atomic_bool pipe_phase = ATOMIC_VAR_INIT(false);
 
 void *signal_handler_thread(void *arg) {
   // anche questo thread ha i segnali bloccati, ma aspetta SIGINT con la wait
@@ -79,7 +78,7 @@ void *signal_handler_thread(void *arg) {
         }
 
         if (sig == SIGINT) {
-            if (!atomic_load(&pipe_phase)) {
+            if (!atomic_load(args->pipe_phase)) {
                 int x;
                 const char msg[] = "Costruzione del grafo in corso\n";
                 if ((x = write(STDERR_FILENO, msg, sizeof(msg) - 1)) != sizeof(msg) -1)
@@ -302,10 +301,12 @@ int main(int argc, char *argv[]) {
 
 
     atomic_bool main_terminate_flag = ATOMIC_VAR_INIT(false);
+    atomic_bool main_pipe_phase = ATOMIC_VAR_INIT(false);
     signal_thread_args_t sig_args = {
         .pipe_fd = -1,
         .sigset = &set,
-        .terminate_program = &main_terminate_flag
+        .terminate_program = &main_terminate_flag,
+        .pipe_phase = &main_pipe_phase
     };
     // Creiamo il thread gestore
     if (pthread_create(&tid, NULL, signal_handler_thread, (void *)&sig_args) != 0)
@@ -350,7 +351,7 @@ int main(int argc, char *argv[]) {
     if (sig_args.pipe_fd == -1)
     termina("couldn't open pipe for reading");
     
-    atomic_store(&pipe_phase, true);
+    atomic_store(&main_pipe_phase, true);
     while (1) {
         if(atomic_load(&main_terminate_flag)) {
             fprintf(stderr, "Terminazione richiesta dal signal handler\n");
