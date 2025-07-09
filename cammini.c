@@ -17,19 +17,19 @@
 #define BUFFER_CAPACITY 100
 
 typedef struct {
-  int codice;         // codice attore 
-  char *nome;         // nome attore
-  int anno;           // anno di nascita 
-  int numcop;         // numero coprotagonisti 
-  int *cop;           // array coprotagonisti
+  int codice;
+  char *nome;
+  int anno;
+  int numcop;
+  int *cop;
 } attore;
 
 typedef struct {
     char **buffer_linee;
-    int capacity;            // dimensione del buffer
-    int count;               // numero di elementi nel buffer
-    int in;                  // indice scrittura (produttore)
-    int out;                 // indice lettura (consumatore)
+    int capacity;
+    int count;
+    int in;
+    int out;
     
     attore *attori;
     int num_attori;
@@ -37,12 +37,9 @@ typedef struct {
     pthread_mutex_t mutex;
     sem_t emptySlots;
     sem_t fullSlots;
-    atomic_bool finito;             // segnale che produttore ha finito di scrivere
+    atomic_bool finito;
 } shared_buffer_t;
 
-// volatile assicura che il compilatori non faccia assunzioni sul valore della variabile e che non ottimizzi il codice
-
-// diventerà true quando inizierà la lettura dalla pipe
 typedef struct {
     int pipe_fd;
     sigset_t *sigset;
@@ -86,8 +83,6 @@ void *signal_handler_thread(void *arg) {
             } else {
                 fprintf(stderr, "SIGINT ricevuto nella fase pipe. Terminazione...\n");
                 atomic_store(args->terminate_program, true);
-                //sleep(20);
-                //cleanup(args->sbuff, args->attori, args->num_attori, args->pipe_fd);
                 pthread_exit(NULL);
             }
         }
@@ -146,7 +141,6 @@ int carica_attori(const char *nomefile, attore **attori) {
         
         int anno = atoi(anno_str);
         int codice = atoi(codice_str);
-        //fprintf(stderr, "%s\n", nome);
         if (count == capacity) {
             capacity *= 2;
             attore *tmp = realloc(lista, sizeof(attore) * capacity);
@@ -198,7 +192,7 @@ void *consumer(void *arg) {
         pthread_mutex_unlock(&sb->mutex);
         sem_post(&sb->emptySlots);
 
-        // Parsing riga
+        // parsing riga
         char *saveptr;
         if ((token = strtok_r(line, "\t", &saveptr)) == NULL) {
             free(line);
@@ -212,14 +206,15 @@ void *consumer(void *arg) {
         }
         int numcop = atoi(token);
 
-        // Alloca array coprotagonisti
+        // alloca array coprotagonisti
         int *cop = malloc(sizeof(int) * numcop);
+        if (!cop) termina("errore allocazione array coprotagonisti");
         for (int i = 0; i < numcop; i++) {
             if ((token = strtok_r(NULL, "\t", &saveptr)) == NULL) break;
             cop[i] = atoi(token);
         }
 
-        // Aggiorna struttura attori
+        // aggiorna struttura attori
         attore chiave = {.codice = codice_attore};
         // ricerca per codice l'indice dell'attore nell'array attori  
         attore *dest = bsearch(&chiave, sb->attori, sb->num_attori, sizeof(attore), &confronta_attori);
@@ -450,8 +445,8 @@ bool search_node(node *root, int key) {
 
 // Nodo per coda BFS: memorizza INDICI nell'array attori
 typedef struct queue_node {
-    int attore_idx; // Indice dell'attore nell'array `attori`
-    int from_idx;   // Indice del padre nell'array `attori`
+    int attore_idx; // Indice dell'attore nell'array attori
+    int from_idx;   // Indice del padre nell'array attori
     struct queue_node *next;
 } queue_node;
 
@@ -505,8 +500,8 @@ void *bfs_thread(void *args) {
     bfs_args_t *data = (bfs_args_t *)args;
     attore *attori = data->attori;
     int tota = data->tota;
-    int a_code = data->a; // Codice sorgente
-    int b_code = data->b; // Codice destinazione
+    int a_code = data->a; 
+    int b_code = data->b; 
 
     // Trova gli INDICI degli attori di partenza e destinazione
     attore *src_ptr = bsearch(&(attore){.codice = a_code}, attori, tota, sizeof(attore), confronta_attori);
@@ -516,7 +511,7 @@ void *bfs_thread(void *args) {
     snprintf(nomefile, sizeof(nomefile), "%d.%d", a_code, b_code);
     FILE *out = fopen(nomefile, "w");
     if (!out) {
-        free(data); // Libera gli args prima di uscire
+        free(data);
         pthread_exit(NULL);
     }
 
@@ -529,14 +524,16 @@ void *bfs_thread(void *args) {
         free(data);
         pthread_exit(NULL);
     }
-
-    int src_idx = (src_ptr - attori); // Calcola l'indice
-    int dst_idx = (dst_ptr - attori); // Calcola l'indice
+    
+    // calcola l'indice
+    int src_idx = (src_ptr - attori); 
+    int dst_idx = (dst_ptr - attori); 
 
     node *explored = NULL; // ABR per i codici degli attori (shuffled) già visitati
-    queue *q = create_queue(); // Coda per gli INDICI degli attori
+    // coda per indici attori
+    queue *q = create_queue();
     
-    // Array per memorizzare l'indice del padre per ogni indice di attore
+    // array per memorizzare l'indice del padre per ogni indice di attore
     int *parent_indices = calloc(tota, sizeof(int));
     if (!parent_indices) {
         fprintf(stderr, "Errore calloc per parent_indices.\n");
@@ -546,33 +543,34 @@ void *bfs_thread(void *args) {
         free(data);
         pthread_exit(NULL);
     }
-    for (int i = 0; i < tota; i++) parent_indices[i] = -1; // Inizializza a -1
+    // inizializza arr padre a -1
+    for (int i = 0; i < tota; i++) parent_indices[i] = -1; 
 
-    enqueue(q, src_idx, -1); // Enqueue con l'indice di partenza, padre -1
-    explored = insert_node(explored, shuffle(a_code)); // Registra il codice della sorgente
+    enqueue(q, src_idx, -1);
+    explored = insert_node(explored, shuffle(a_code));
 
     bool found = false;
     while (!found && q->front) {
         int curr_idx, father_idx;
         dequeue(q, &curr_idx, &father_idx);
-        parent_indices[curr_idx] = father_idx; // Salva il padre per l'indice corrente
+        parent_indices[curr_idx] = father_idx;
 
-        if (attori[curr_idx].codice == b_code) { // Trovato il nodo di destinazione (usando il codice)
+        if (attori[curr_idx].codice == b_code) {
             found = true;
             break;
         }
 
         attore *current_attore = &attori[curr_idx]; // Accesso diretto all'attore tramite indice
-
+        // scansiona la lista di adiacenza e aggiunge nell'abr i nodi non explored
         for (int i = 0; i < current_attore->numcop; i++) {
             int next_code = current_attore->cop[i];
-            if (!search_node(explored, shuffle(next_code))) { // Controlla se il codice è già stato esplorato
+            if (!search_node(explored, shuffle(next_code))) {
                 // Trova l'indice del coprotagonista
                 attore *next_attore_ptr = bsearch(&(attore){.codice = next_code}, attori, tota, sizeof(attore), confronta_attori);
                 if (next_attore_ptr) {
-                    int next_idx = (next_attore_ptr - attori); // Calcola l'indice
-                    enqueue(q, next_idx, curr_idx); // Enqueue con l'indice del vicino e l'indice del padre
-                    explored = insert_node(explored, shuffle(next_code)); // Registra il codice del vicino
+                    int next_idx = (next_attore_ptr - attori); // calcola l'indice
+                    enqueue(q, next_idx, curr_idx); // enqueue con l'indice del vicino e l'indice del padre
+                    explored = insert_node(explored, shuffle(next_code)); // registra il codice del vicino
                     if (next_code == b_code) { // Ottimizzazione: se è la destinazione, si può uscire
                         parent_indices[next_idx] = curr_idx;
                         found = true;
@@ -588,16 +586,16 @@ void *bfs_thread(void *args) {
         double elapsed_time = (double)(times(NULL) - start) / sysconf(_SC_CLK_TCK);
         printf("%d.%d: Nessun cammino. Tempo di elaborazione %.2f secondi\n", a_code, b_code, elapsed_time);
     } else {
-        // Backtracking del cammino e stampa
-        int path_indices[tota]; // Array temporaneo per gli indici del cammino
-        int len = 0, curr_path_idx = dst_idx; // Inizia dall'indice di destinazione
+        // backtracking del cammino e stampa
+        int path_indices[tota]; // array temporaneo per gli indici del cammino
+        int len = 0, curr_path_idx = dst_idx; // inizia dall'indice di destinazione
         while (curr_path_idx != -1) {
             path_indices[len++] = curr_path_idx;
             curr_path_idx = parent_indices[curr_path_idx];
         }
-
-        for (int i = len - 1; i >= 0; i--) { // Stampa il cammino al contrario (dal sorgente alla destinazione)
-            attore *act = &attori[path_indices[i]]; // Accesso diretto tramite indice
+        // stampa il cammino al contrario
+        for (int i = len - 1; i >= 0; i--) { 
+            attore *act = &attori[path_indices[i]];
             fprintf(out, "%d\t%s\t%d\n", act->codice, act->nome, act->anno);
         }
         double elapsed_time = (double)(times(NULL) - start) / sysconf(_SC_CLK_TCK);
@@ -607,7 +605,7 @@ void *bfs_thread(void *args) {
     free(data);
     fclose(out);
     destroy_queue(q);
-    free(parent_indices); // Libera l'array dei genitori
+    free(parent_indices);
     destroy_node(explored);
     pthread_exit(NULL);
 }
@@ -621,11 +619,11 @@ void termina(const char *messaggio) {
 }
 
 void cleanup(shared_buffer_t *sb, attore *attori, int num_attori, int pipe_fd) {
-    // Chiudo pipe se aperta
+    // chiudo pipe se aperta
     if (pipe_fd >= 0)
         close(pipe_fd);
 
-    // Distruggo semafori e mutex
+    // distruggo semafori e mutex
     sem_destroy(&sb->emptySlots);
     sem_destroy(&sb->fullSlots);
     pthread_mutex_destroy(&sb->mutex);
