@@ -452,7 +452,8 @@ typedef struct queue_node {
 
 // Coda FIFO per BFS
 typedef struct {
-    queue_node *front, *rear;
+    queue_node *front;
+    queue_node *rear;
 } queue;
 
 queue *create_queue() {
@@ -534,9 +535,9 @@ void *bfs_thread(void *args) {
     queue *q = create_queue();
     
     // array per memorizzare l'indice del padre per ogni indice di attore
-    int *parent_indices = calloc(tota, sizeof(int));
+    int *parent_indices = malloc(tota * sizeof(int));
     if (!parent_indices) {
-        fprintf(stderr, "Errore calloc per parent_indices.\n");
+        fprintf(stderr, "Errore malloc per parent_indices.\n");
         fclose(out);
         destroy_queue(q);
         destroy_node(explored);
